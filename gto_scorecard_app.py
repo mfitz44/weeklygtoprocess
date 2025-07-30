@@ -9,12 +9,12 @@ st.set_page_config(page_title="Fairway Theory GTO Scorecard Generator", layout="
 def load_data(uploaded_file):
     return pd.read_csv(uploaded_file)
 
- def to_csv_bytes(df: pd.DataFrame) -> bytes:
+def to_csv_bytes(df: pd.DataFrame) -> bytes:
     buf = BytesIO()
     df.to_csv(buf, index=False)
     return buf.getvalue()
 
- def main():
+def main():
     st.title("Fairway Theory GTO Scorecard Generator")
     st.markdown(
         "Upload your Rotogrinders and DataGolf CSVs separately to generate a builder-ready GTO scorecard per SOP Steps 1–7."
