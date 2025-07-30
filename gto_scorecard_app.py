@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-from rapidfuzz import fuzz, process
+import difflib
+import re
 
 st.set_page_config(page_title="Fairway Theory GTO Scorecard Generator", layout="wide")
 
@@ -13,6 +14,13 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
     buf = BytesIO()
     df.to_csv(buf, index=False)
     return buf.getvalue()
+
+def normalize_name(name: str) -> str:
+    # Lowercase, remove punctuation, split tokens, sort, and rejoin for consistent matching
+    clean = re.sub(r"[^a-zA-Z\s]", "", name).lower().strip()
+    tokens = clean.split()
+    tokens.sort()
+    return " ".join(tokens)
 
 def main():
     st.title("Fairway Theory GTO Scorecard Generator")
@@ -38,15 +46,20 @@ def main():
     if 'Golfer' in dg_df.columns:
         dg_df = dg_df.rename(columns={'Golfer': 'Name'})
 
-    # Step 2: Fuzzy merge RG & DG
-    dg_names = dg_df['Name'].tolist()
+    # Create normalized name keys for fuzzy matching
+    rg_df['Name_norm'] = rg_df['Name'].apply(normalize_name)
+    dg_df['Name_norm'] = dg_df['Name'].apply(normalize_name)
+
+    # Step 2: Fuzzy merge RG & DG using normalized tokens
+    dg_norms = dg_df['Name_norm'].tolist()
     mapping = {}
-    for name in rg_df['Name']:
-        match = process.extractOne(name, dg_names, scorer=fuzz.token_sort_ratio)
-        mapping[name] = match[0] if match and match[1] >= 80 else None
-    rg_df['Matched_DG_Name'] = rg_df['Name'].map(mapping)
-    merged = pd.merge(rg_df, dg_df, left_on='Matched_DG_Name', right_on='Name', suffixes=("", "_dg"))
-    merged = merged.drop(columns=['Matched_DG_Name', 'Name_dg'], errors='ignore')
+    for orig, norm in zip(rg_df['Name'], rg_df['Name_norm']):
+        match_norm = difflib.get_close_matches(norm, dg_norms, n=1, cutoff=0.8)
+        mapping[orig] = match_norm[0] if match_norm else None
+    rg_df['Matched_DG_Norm'] = rg_df['Name'].map(mapping)
+    merged = pd.merge(rg_df, dg_df, left_on='Matched_DG_Norm', right_on='Name_norm', suffixes=("", "_dg"))
+    # Drop helper columns
+    merged = merged.drop(columns=['Matched_DG_Norm', 'Name_dg', 'Name_norm', 'Name_norm_dg'], errors='ignore')
 
     st.success(f"Merged raw data: {len(merged)} rows")
     today = pd.Timestamp.today().strftime("%m%d%y")
